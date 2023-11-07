@@ -38,6 +38,7 @@ def train_eval_gcnae(graph_path, batch_size=0, attribute_dims=None):
     r_10_list = []
     f1_list = []
     hit_rate_list = []
+    recall_at_10_list_per_type = []  # Initialize a list to store the Recall@10 per type
 
     files = [f for f in listdir(graph_path) if isfile(join(graph_path, f))]
 
@@ -99,6 +100,28 @@ def train_eval_gcnae(graph_path, batch_size=0, attribute_dims=None):
         hit_rates = nodes_y_df.groupby("original_y")["correct"].mean().to_dict()
         hit_rate_list.append(hit_rates)
 
+        # Compute Recall @ 10 for each type
+        # Step 1: Determine the threshold for the top 10%
+        threshold = np.percentile(decision_scores.cpu().numpy(), 90)
+
+        # Step 2: Use the threshold to set positive/negative predictions
+        predicted_binary = (decision_scores >= threshold).astype(int)
+
+        # Step 3: Compute Recall for each class
+        recalls_for_each_class = {}
+
+        original_y = np.array(original_y)
+        predicted_binary = np.array(predicted_binary)
+
+        unique_classes = np.unique(original_y)  # Get the unique classes
+        for cls in unique_classes:
+            true_positives = np.sum((original_y == cls) & (predicted_binary == 1))
+            actual_positives = np.sum(original_y == cls)
+            recall = true_positives / (actual_positives + 1e-10)  # Add a small value to prevent division by zero
+            recalls_for_each_class[cls] = recall
+
+        recall_at_10_list_per_type.append(recalls_for_each_class)
+
     results_dict = {'F1': f1_list,
                     'AUC ROC': auc_roc_list,
                     'AUC Precision-Recall': auc_pr_list,
@@ -115,6 +138,12 @@ def train_eval_gcnae(graph_path, batch_size=0, attribute_dims=None):
     hit_rate_mean = hit_rate_df.mean()
     hit_rate_std = hit_rate_df.std()
 
+    # Compute mean and standard deviation of hit rates
+    recall_at_10_df_per_type = pd.DataFrame(recall_at_10_list_per_type)
+    recall_at_10_mean_per_type = recall_at_10_df_per_type.mean()
+    recall_at_10_std_per_type = recall_at_10_df_per_type.std()
+
+
     # Print the results as a table
     print('Evaluation metrics:')
     print('-------------------')
@@ -130,6 +159,11 @@ def train_eval_gcnae(graph_path, batch_size=0, attribute_dims=None):
     print('')
     for col in hit_rate_df.columns:
         print("Hit Rate {:.0f}: {:.2f} ± {:.2f}".format(col, hit_rate_mean[col] * 100, hit_rate_std[col] * 100))
+
+    # Print Recall @ 10 mean and standard deviation per type
+    print("\nRecall @ 10 for each type:")
+    for col in recall_at_10_df_per_type.columns:
+        print("Recall @ 10 for {:.0f}: {:.2f} ± {:.2f}".format(col, recall_at_10_mean_per_type[col] * 100, recall_at_10_std_per_type[col] * 100))
 
     end = time.time()
     print('')
@@ -176,6 +210,7 @@ def train_eval_ae(tab_path, batch_size=8192, attribute_dims=None):
     r_10_list = []
     f1_list = []
     hit_rate_list = []
+    recall_at_10_list_per_type = []  # Initialize a list to store the Recall@10 per type
 
     files = [f for f in listdir(tab_path) if isfile(join(tab_path, f))]
 
@@ -243,6 +278,29 @@ def train_eval_ae(tab_path, batch_size=8192, attribute_dims=None):
         hit_rates = original_y.groupby("y")["correct"].mean().to_dict()
         hit_rate_list.append(hit_rates)
 
+       # Compute Recall @ 10 for each type
+        # Step 1: Determine the threshold for the top 10%
+        threshold = np.percentile(decision_scores, 90)
+
+        # Step 2: Use the threshold to set positive/negative predictions
+        predicted_binary = (decision_scores >= threshold).astype(int)
+
+        # Step 3: Compute Recall for each class
+        recalls_for_each_class = {}
+
+        original_y_values = original_y['y'].values
+        predicted_binary = np.array(predicted_binary)
+
+        unique_classes = np.unique(original_y_values)  # Get the unique classes
+        for cls in unique_classes:
+            true_positives = np.sum((original_y_values == cls) & (predicted_binary == 1))
+            actual_positives = np.sum(original_y_values == cls)
+            recall = true_positives / (actual_positives + 1e-10)  # Add a small value to prevent division by zero
+            recalls_for_each_class[cls] = recall
+
+
+        recall_at_10_list_per_type.append(recalls_for_each_class)
+
         gc.collect()
 
     results_dict = {'F1': f1_list,
@@ -261,6 +319,11 @@ def train_eval_ae(tab_path, batch_size=8192, attribute_dims=None):
     hit_rate_mean = hit_rate_df.mean()
     hit_rate_std = hit_rate_df.std()
 
+    # Compute mean and standard deviation of hit rates
+    recall_at_10_df_per_type = pd.DataFrame(recall_at_10_list_per_type)
+    recall_at_10_mean_per_type = recall_at_10_df_per_type.mean()
+    recall_at_10_std_per_type = recall_at_10_df_per_type.std()
+
     # Print the results as a table
     print('Evaluation metrics:')
     print('-------------------')
@@ -276,6 +339,11 @@ def train_eval_ae(tab_path, batch_size=8192, attribute_dims=None):
     print('')
     for col in hit_rate_df.columns:
         print("Hit Rate {:.0f}: {:.2f} ± {:.2f}".format(col, hit_rate_mean[col] * 100, hit_rate_std[col] * 100))
+
+    # Print Recall @ 10 mean and standard deviation per type
+    print("\nRecall @ 10 for each type:")
+    for col in recall_at_10_df_per_type.columns:
+        print("Recall @ 10 for {:.0f}: {:.2f} ± {:.2f}".format(col, recall_at_10_mean_per_type[col] * 100, recall_at_10_std_per_type[col] * 100))
 
     end = time.time()
     print('')
@@ -324,6 +392,7 @@ def train_eval_lstmae(tab_path, batch_size=8192, attribute_dims=None):
     r_10_list = []
     f1_list = []
     hit_rate_list = []
+    recall_at_10_list_per_type = []  # Initialize a list to store the Recall@10 per type
 
     files = [f for f in listdir(tab_path) if isfile(join(tab_path, f))]
 
@@ -390,6 +459,27 @@ def train_eval_lstmae(tab_path, batch_size=8192, attribute_dims=None):
         # Calculate hit rates for each original value and store them in a dictionary
         hit_rates = original_y.groupby("y")["correct"].mean().to_dict()
         hit_rate_list.append(hit_rates)
+        # Compute Recall @ 10 for each type
+        # Step 1: Determine the threshold for the top 10%
+        threshold = np.percentile(decision_scores, 90)
+
+        # Step 2: Use the threshold to set positive/negative predictions
+        predicted_binary = (decision_scores >= threshold).astype(int)
+
+        # Step 3: Compute Recall for each class
+        recalls_for_each_class = {}
+
+        original_y_values = original_y['y'].values
+        predicted_binary = np.array(predicted_binary)
+
+        unique_classes = np.unique(original_y_values)  # Get the unique classes
+        for cls in unique_classes:
+            true_positives = np.sum((original_y_values == cls) & (predicted_binary == 1))
+            actual_positives = np.sum(original_y_values == cls)
+            recall = true_positives / (actual_positives + 1e-10)  # Add a small value to prevent division by zero
+            recalls_for_each_class[cls] = recall
+
+        recall_at_10_list_per_type.append(recalls_for_each_class)
 
     results_dict = {'F1': f1_list,
                     'AUC ROC': auc_roc_list,
@@ -407,6 +497,11 @@ def train_eval_lstmae(tab_path, batch_size=8192, attribute_dims=None):
     hit_rate_mean = hit_rate_df.mean()
     hit_rate_std = hit_rate_df.std()
 
+   # Compute mean and standard deviation of hit rates
+    recall_at_10_df_per_type = pd.DataFrame(recall_at_10_list_per_type)
+    recall_at_10_mean_per_type = recall_at_10_df_per_type.mean()
+    recall_at_10_std_per_type = recall_at_10_df_per_type.std()
+
     # Print the results as a table
     print('Evaluation metrics:')
     print('-------------------')
@@ -422,6 +517,11 @@ def train_eval_lstmae(tab_path, batch_size=8192, attribute_dims=None):
     print('')
     for col in hit_rate_df.columns:
         print("Hit Rate {:.0f}: {:.2f} ± {:.2f}".format(col, hit_rate_mean[col] * 100, hit_rate_std[col] * 100))
+
+    # Print Recall @ 10 mean and standard deviation per type
+    print("\nRecall @ 10 for each type:")
+    for col in recall_at_10_df_per_type.columns:
+        print("Recall @ 10 for {:.0f}: {:.2f} ± {:.2f}".format(col, recall_at_10_mean_per_type[col] * 100, recall_at_10_std_per_type[col] * 100))
 
     end = time.time()
     print('')
